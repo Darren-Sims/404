@@ -1,0 +1,154 @@
+// link-checker.js
+(function() {
+    // Create unique namespace to avoid conflicts
+    window.LinkChecker404 = {
+        init: function(config = {}) {
+            const defaults = {
+                internalOnly: true,
+                delayMs: 500,
+                borderColor: 'red',
+                checkingColor: 'orange',
+                statusPosition: 'top-right'
+            };
+            
+            this.config = { ...defaults, ...config };
+            this.addStyles();
+            this.createControls();
+        },
+
+        addStyles: function() {
+            const css = `
+                .lc-404-broken-link {
+                    border: 2px solid ${this.config.borderColor} !important;
+                    padding: 2px;
+                }
+                .lc-404-checking-link {
+                    border: 2px solid ${this.config.checkingColor} !important;
+                    padding: 2px;
+                }
+                .lc-404-status {
+                    position: fixed;
+                    ${this.config.statusPosition.includes('top') ? 'top: 20px;' : 'bottom: 20px;'}
+                    ${this.config.statusPosition.includes('right') ? 'right: 20px;' : 'left: 20px;'}
+                    padding: 15px;
+                    background: rgba(0, 0, 0, 0.8);
+                    color: white;
+                    border-radius: 5px;
+                    z-index: 10000;
+                    font-family: Arial, sans-serif;
+                    transition: opacity 1s;
+                }
+                .lc-404-button {
+                    position: fixed;
+                    ${this.config.statusPosition.includes('top') ? 'top: 20px;' : 'bottom: 20px;'}
+                    ${this.config.statusPosition.includes('right') ? 'right: 20px;' : 'left: 20px;'}
+                    padding: 10px 20px;
+                    background: #4CAF50;
+                    color: white;
+                    border: none;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    z-index: 10000;
+                    font-family: Arial, sans-serif;
+                }
+                .lc-404-button:hover {
+                    background: #45a049;
+                }
+            `;
+            
+            const style = document.createElement('style');
+            style.textContent = css;
+            document.head.appendChild(style);
+        },
+
+        createControls: function() {
+            const button = document.createElement('button');
+            button.className = 'lc-404-button';
+            button.textContent = 'Check for Broken Links';
+            button.onclick = () => this.startCheck();
+            document.body.appendChild(button);
+        },
+
+        delay: function(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        },
+
+        isInternalLink: function(url) {
+            try {
+                const currentDomain = new URL(window.location.href).hostname;
+                const linkDomain = new URL(url).hostname;
+                return currentDomain === linkDomain;
+            } catch {
+                return false;
+            }
+        },
+
+        showStatus: function(message) {
+            if (!this.statusBox) {
+                this.statusBox = document.createElement('div');
+                this.statusBox.className = 'lc-404-status';
+                document.body.appendChild(this.statusBox);
+            }
+            this.statusBox.textContent = message;
+        },
+
+        async checkLink(url) {
+            try {
+                const response = await fetch(url, {
+                    method: 'HEAD',
+                    cache: 'no-cache'
+                });
+                return response.status !== 404;
+            } catch (error) {
+                console.log(`Couldn't check ${url}: ${error.message}`);
+                return true; // Don't mark as broken if we can't check it
+            }
+        },
+
+        async startCheck() {
+            const links = Array.from(document.getElementsByTagName('a'))
+                .filter(link => {
+                    if (!link.href || link.href.startsWith('javascript:') || link.href === '#') {
+                        return false;
+                    }
+                    return !this.config.internalOnly || this.isInternalLink(link.href);
+                });
+
+            let brokenCount = 0;
+            let checkedCount = 0;
+
+            this.showStatus(`Checking ${links.length} links...`);
+
+            for (const link of links) {
+                checkedCount++;
+                link.classList.add('lc-404-checking-link');
+                
+                this.showStatus(`Checking link ${checkedCount} of ${links.length}`);
+                
+                const isValid = await this.checkLink(link.href);
+                
+                link.classList.remove('lc-404-checking-link');
+                
+                if (!isValid) {
+                    link.classList.add('lc-404-broken-link');
+                    brokenCount++;
+                    console.log(`Found broken link: ${link.href}`);
+                }
+
+                await this.delay(this.config.delayMs);
+            }
+
+            this.showStatus(`Found ${brokenCount} broken links out of ${links.length}`);
+            
+            setTimeout(() => {
+                if (this.statusBox) {
+                    this.statusBox.style.opacity = '0';
+                    setTimeout(() => {
+                        this.statusBox.remove();
+                        this.statusBox = null;
+                    }, 1000);
+                }
+            }, 5000);
+        }
+    };
+})();
